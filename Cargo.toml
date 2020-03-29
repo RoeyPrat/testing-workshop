@@ -1,0 +1,20 @@
+[package]
+name = "testing-workshop"
+version = "0.1.0"
+authors = ["Gavrie Philipson <gavrie@philipson.co.il>"]
+edition = "2018"
+
+#[[bin]]
+#name = "00_add_main"
+#
+#[[bin]]
+#name = "01_add_test"
+#
+[[bin]]
+name = "18_property_proptest"
+
+[dependencies]
+quickcheck = "0.9"
+quickcheck_macros = "0.9"
+
+proptest = "0.9"
