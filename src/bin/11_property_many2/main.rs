@@ -27,7 +27,11 @@ fn test_sum_is_associative() {
 fn test_sum_stays_same_when_adding_zero() {
     let a = 3;
 
-    assert_eq!(add(a, 0), a, "Expected sum to stay the same when adding zero");
+    assert_eq!(
+        add(a, 0),
+        a,
+        "Expected sum to stay the same when adding zero"
+    );
 }
 
 #[test]

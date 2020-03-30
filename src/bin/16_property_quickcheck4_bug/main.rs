@@ -4,7 +4,7 @@ extern crate quickcheck_macros;
 use quickcheck::TestResult;
 
 fn add(a: i32, b: i32) -> i32 {
-    if a < -100 {
+    if a <= -100 {
         7
     } else {
         a + b
@@ -31,7 +31,7 @@ fn sum_is_greater_than_parts(a: i32, b: i32) -> TestResult {
     let sum = add(a, b);
 
     if a <= 0 || b <= 0 {
-        return TestResult::discard()
+        return TestResult::discard();
     }
 
     TestResult::from_bool(sum > a && sum > b)

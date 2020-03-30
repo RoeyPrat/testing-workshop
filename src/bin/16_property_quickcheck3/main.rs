@@ -1,6 +1,8 @@
 #[macro_use(quickcheck)]
 extern crate quickcheck_macros;
 
+use quickcheck::TestResult;
+
 fn add(a: i32, b: i32) -> i32 {
     a + b
 }
@@ -21,12 +23,12 @@ fn sum_stays_same_when_adding_zero(a: i32) -> bool {
 }
 
 #[quickcheck]
-fn sum_is_greater_than_parts(a: i32, b: i32) -> bool {
+fn sum_is_greater_than_parts(a: i32, b: i32) -> TestResult {
     let sum = add(a, b);
 
-    if a > 0 && b > 0 {
-        sum > a && sum > b
-    } else {
-        true
+    if a <= 0 || b <= 0 {
+        return TestResult::discard();
     }
+
+    TestResult::from_bool(sum > a && sum > b)
 }
