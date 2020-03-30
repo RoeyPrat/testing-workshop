@@ -6,12 +6,6 @@ edition = "2018"
 
 #[[bin]]
 #name = "00_add_main"
-#
-#[[bin]]
-#name = "01_add_test"
-#
-[[bin]]
-name = "18_property_proptest"
 
 [dependencies]
 quickcheck = "0.9"

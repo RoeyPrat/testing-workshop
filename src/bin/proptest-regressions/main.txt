@@ -4,4 +4,4 @@
 #
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
-cc 9d8c5548bf1f8a8828e299e0f77bc7452c232b99da7e34c75ac5031b0634cf82 # shrinks to a = -10001, b = 0
+cc a6bd3ed2330901bb1044703f6566b78b3b55fd92b1436501b02f942b63a8e9f4 # shrinks to a = 0, b = -101
