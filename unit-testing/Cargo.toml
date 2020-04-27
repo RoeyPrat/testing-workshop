@@ -7,8 +7,10 @@ edition = "2018"
 #[[bin]]
 #name = "00_add_main"
 
-[dependencies]
-quickcheck = "0.9"
-quickcheck_macros = "0.9"
+[dependencies.quickcheck]
+version = "0.9"
+features = ["use_logging"]
 
-proptest = "0.9"
+[dependencies]
+quickcheck_macros = "0.9"
+rand = "0.7"
