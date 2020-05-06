@@ -1,0 +1,17 @@
+[package]
+name = "testing-workshop-exercises"
+version = "0.1.0"
+authors = ["Roey Prat <roey.prat@gmail.com>"]
+edition = "2018"
+
+#[[bin]]
+#name = "00_add_main"
+
+[dependencies.quickcheck]
+version = "0.9"
+features = ["use_logging"]
+
+[dependencies]
+quickcheck_macros = "0.9"
+rand = "0.7"
+byte-strings = "0.1.3"
