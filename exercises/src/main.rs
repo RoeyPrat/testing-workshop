@@ -3,78 +3,155 @@ extern crate quickcheck_macros;
 
 use std::str;
 
+use quickcheck::{Arbitrary, Gen};
+
+const NEWLINE: &[u8] = b"\r\n";
+
 #[derive(Debug, PartialEq)]
-struct RespError<'a> {
-    explanation: &'a str
+enum RespError {
+    MissingLength,
+    InvalidLength,
+    InvalidData,
+    MissingEndOfLine,
+    NotEnoughData {
+        required_len: usize,
+        actual_len: usize,
+    },
 }
 
-fn parse_bulk(data: &[u8]) -> Result<&[u8], RespError> {
-    let mut num_chars: usize = 0;
-    let mut last_digit_index = 0;
+#[derive(Debug, PartialEq)]
+enum RedisValue<'data> {
+    SimpleString(&'data [u8]),
+    BulkString(&'data [u8]),
+    Null,
+}
 
-    if (data[1] as char) == '-' && (data[2] as char) == '1' {
-        return Ok(b"");
+#[derive(Clone, Debug, PartialEq)]
+enum RedisValueOwned {
+    SimpleString(Vec<u8>),
+    BulkString(Vec<u8>),
+    Null,
+}
+
+fn resp_parse(data: &[u8]) -> Result<RedisValue, RespError> {
+    match &data {
+        [b'+', data @ ..] => parse_simple_string(data),
+        [b'$', data @ ..] => parse_bulk_string(data),
+        _ => Err(RespError::InvalidData),
     }
+}
 
-    for (i, ch) in data[1..(data.len() - 1)].iter().enumerate() {
-        if (*ch as char).is_digit(10) || (*ch as char) == '-' {
-            num_chars *= 10;
-            num_chars += (*ch as char).to_digit(10).unwrap() as usize;
-            last_digit_index = i
-        } else {
-            break;
+fn parse_simple_string(data: &[u8]) -> Result<RedisValue, RespError> {
+    match split_line(data) {
+        (Some(line), _) => Ok(RedisValue::SimpleString(line)),
+        (None, _) => Err(RespError::MissingEndOfLine),
+    }
+}
+
+fn parse_bulk_string(data: &[u8]) -> Result<RedisValue, RespError> {
+    match split_line(data) {
+        (Some(length), data) => {
+            let length = str::from_utf8(length).map_err(|_| RespError::InvalidLength)?;
+            let length: isize = length.parse().map_err(|_| RespError::InvalidLength)?;
+
+            let length = if length == -1 {
+                // Null bulk string
+                return Ok(RedisValue::Null);
+            } else {
+                length as usize
+            };
+
+            let required_len = length + NEWLINE.len();
+            let actual_len = data.len();
+
+            if actual_len < required_len {
+                Err(RespError::NotEnoughData {
+                    required_len,
+                    actual_len,
+                })
+            } else {
+                let data = &data[..length];
+                Ok(RedisValue::BulkString(data))
+            }
         }
-    }
-    if num_chars == 0 {
-        return Ok(b"");
-    }
-    return Ok(&data[last_digit_index + 4..last_digit_index + 4 + num_chars]);
-}
-
-fn resp_parse(data: &[u8]) -> Result<&[u8], RespError> {
-    match data[0] {
-        b'+' => {
-            Ok(&data[1..data.len() - 2])
-        }
-        b'$' => {
-            parse_bulk(data)
-        }
-        _ => Err(RespError { explanation: "not valid because of first char" })
+        (None, _) => Err(RespError::MissingLength),
     }
 }
 
-// Empty bulk string `b"$0\r\n\r\n"`
-#[test]
-fn test_empty_bulk_string() {
-    assert_eq!(b"", resp_parse(b"$0\r\n\r\n").unwrap());
+fn split_line(data: &[u8]) -> (Option<&[u8]>, &[u8]) {
+    find_subsequence(data, NEWLINE)
+        .map(|i| {
+            let line = &data[..i];
+            let rest = &data[i + NEWLINE.len()..];
+            (Some(line), rest)
+        })
+        .unwrap_or((None, data))
 }
 
-// Null Bulk Strings (`b"$-1\r\n"`)
-#[test]
-fn test_null_bulk_string() {
-    assert_eq!(b"", resp_parse(b"$-1\r\n").unwrap());
+fn find_subsequence(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
 }
 
-
-// embedded with \r\n b"$12\r\rnhello\r\nworld\r\n"
-#[test]
-fn test_complex() {
-    let expected = b"hello\r\nworld";
-    let actual = resp_parse(b"$12\r\nhello\r\nworld\r\n").unwrap();
-
-    assert_eq!(expected, actual, "{} != {}", str::from_utf8(expected).unwrap(), str::from_utf8(actual).unwrap());
+impl Arbitrary for RedisValueOwned {
+    fn arbitrary<G: Gen>(g: &mut G) -> Self {
+        let data: Vec<u8> = Arbitrary::arbitrary(g);
+        RedisValueOwned::BulkString(data)
+    }
 }
 
 #[quickcheck]
-fn test_invalid_input(expected: String) -> bool {
-    //
-    let unparsed = format!("-{}\r\n", expected);
-    Err(RespError { explanation: "not valid because of first char" }) == resp_parse(unparsed.as_bytes())
+fn qc_roundtrip_simple_string(input: RedisValueOwned) -> bool {
+    match input {
+        RedisValueOwned::BulkString(input_data) => {
+            let mut resp = vec![];
+            resp.extend_from_slice(b"$");
+            resp.extend_from_slice(input_data.len().to_string().as_bytes());
+            resp.extend_from_slice(b"\r\n");
+            resp.extend_from_slice(input_data.as_slice());
+            resp.extend_from_slice(b"\r\n");
+
+            eprintln!("Testing Bulk String with length {}", input_data.len());
+            eprintln!("RESP: {:?}", String::from_utf8_lossy(&resp));
+
+            let value = resp_parse(resp.as_slice()).expect("valid RESP data");
+
+            match value {
+                RedisValue::BulkString(parsed_data) => parsed_data == input_data.as_slice(),
+                _ => false,
+            }
+        }
+        RedisValueOwned::SimpleString(s) => todo!("bulk string"),
+        RedisValueOwned::Null => todo!("null"),
+    }
 }
 
-#[quickcheck]
-fn simple_string(expected: String) -> bool {
-    let unparsed = format!("+{}\r\n", expected);
-    let actual = resp_parse(unparsed.as_bytes()).unwrap();
-    expected == str::from_utf8(actual).unwrap()
+fn assert_parse_eq(input: &[u8], expected: &RedisValue) {
+    let parsed = &resp_parse(input).unwrap();
+
+    let expected_str = match expected {
+        RedisValue::SimpleString(s) => str::from_utf8(s).unwrap(),
+        RedisValue::BulkString(s) => str::from_utf8(s).unwrap(),
+        RedisValue::Null => "(nil)",
+    };
+
+    let parsed_str = match parsed {
+        RedisValue::SimpleString(s) => str::from_utf8(s).unwrap(),
+        RedisValue::BulkString(s) => str::from_utf8(s).unwrap(),
+        RedisValue::Null => "(nil)",
+    };
+
+    assert_eq!(
+        parsed, expected,
+        "expected: '{}', got: '{}'",
+        expected_str, parsed_str,
+    );
+}
+
+fn assert_parse_error(input: &[u8], error: &RespError) {
+    match resp_parse(input) {
+        Err(ref e) => assert_eq!(e, error),
+        r => panic!("got unexpected result: {:?}", r),
+    }
 }
